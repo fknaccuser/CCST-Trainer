@@ -1,6 +1,6 @@
 // CCST Trainer — offline service worker
 // Bump CACHE when you upload a new index.html so devices pick up the change.
-const CACHE = 'ccst-trainer-v1';
+const CACHE = 'ccst-trainer-v2';
 const ASSETS = ['./', './index.html', './icon.png', './manifest.json'];
 
 self.addEventListener('install', e => {

@@ -87,6 +87,28 @@
        border-radius:2px; padding:11px 12px; color:var(--ink); font-size:13.5px; line-height:1.4;
        cursor:pointer; font-family:inherit;}
   .opt:active{background:rgba(59,232,216,.06);}
+  .fab{position:fixed; right:14px; bottom:calc(14px + env(safe-area-inset-bottom)); z-index:20;
+    background:var(--cyan); color:#042220; border:1px solid var(--cyan); border-radius:2px;
+    padding:13px 17px; font-weight:800; letter-spacing:2px; font-size:12px; cursor:pointer;
+    font-family:ui-monospace,Menlo,Consolas,monospace; box-shadow:0 0 20px rgba(59,232,216,.45);}
+  .refwrap{position:fixed; inset:0; z-index:40; background:rgba(4,8,12,.985);
+    display:none; flex-direction:column;}
+  .refwrap.on{display:flex;}
+  .refhead{padding:calc(12px + env(safe-area-inset-top)) 14px 10px;
+    border-bottom:1px solid rgba(59,232,216,.3); background:#0A1119;}
+  .refrow{display:flex; gap:8px; align-items:center; max-width:720px; margin:0 auto; width:100%;}
+  .refsearch{flex:1; background:var(--term-bg); border:1px solid var(--line); border-radius:2px;
+    color:#CFF9F3; caret-color:var(--cyan); padding:11px 12px; font-size:16px; outline:none;
+    font-family:ui-monospace,Menlo,Consolas,monospace;}
+  .refclose{background:transparent; border:1px solid var(--orange); color:var(--orange);
+    border-radius:2px; padding:11px 15px; font-weight:800; font-size:14px; cursor:pointer;
+    font-family:ui-monospace,Menlo,Consolas,monospace;}
+  .refbody{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    padding:12px 14px calc(24px + env(safe-area-inset-bottom));}
+  .refbody .inner{max-width:720px; margin:0 auto;}
+  .refchips{max-width:720px; margin:8px auto 0; width:100%; display:flex; flex-wrap:wrap; gap:5px;}
+  .refhit{background:rgba(255,176,32,.22); border-radius:2px;}
+  body.locked{overflow:hidden;}
   .btnrow{display:flex; gap:8px; margin-top:10px;}
   .btn{flex:1; padding:12px; border-radius:2px; font-weight:800; letter-spacing:2px; font-size:13px;
        cursor:pointer; border:1px solid transparent; font-family:ui-monospace,Menlo,Consolas,monospace;}
@@ -158,11 +180,23 @@
     <button class="tab on" id="tab-quiz">QUIZ</button>
     <button class="tab" id="tab-study">CARDS</button>
     <button class="tab" id="tab-type">TYPE-IT</button>
-    <button class="tab" id="tab-list">LIST</button>
   </div>
   <div class="chips" id="chips"></div>
   <div id="stage"></div>
-  <div class="note">Flashcards: tap the card to flip. Type-It: Enter to transmit. Missed items cycle back in until you clear them.</div>
+  <div class="note" style="margin-bottom:64px">Flashcards: tap the card to flip. Type-It: Enter to transmit. Missed items cycle back in until you clear them. Tap REF anytime — your place is held.</div>
+</div>
+
+<button class="fab" id="fab">REF ▲</button>
+
+<div class="refwrap" id="refwrap">
+  <div class="refhead">
+    <div class="refrow">
+      <input class="refsearch" id="refsearch" placeholder="search commands, protocols, ports…" autocomplete="off" spellcheck="false">
+      <button class="refclose" id="refclose">✕</button>
+    </div>
+    <div class="refchips" id="refchips"></div>
+  </div>
+  <div class="refbody"><div class="inner" id="refbody"></div></div>
 </div>
 
 <script>
@@ -836,37 +870,86 @@ function renderType(){
   };
 }
 
-function renderList(){
-  let html = "";
-  for(const c of CATS){
-    if(!sel.has(c.id)) continue;
-    const rows = ITEMS.filter(it=>it.cat===c.id);
-    html += `<div class="grouphead">${c.label}</div>
-      <table><tr><th>${c.id==="PROTO"?"PROTOCOL":"COMMAND"}</th><th>WHAT IT DOES</th>${c.id==="PROTO"?"<th>PORT</th>":""}</tr>
-      ${rows.map(it=>`<tr><td class="cmd">${esc(it.n)}</td><td>${esc(it.f)}</td>${c.id==="PROTO"?`<td class="p">${it.port||"—"}</td>`:""}</tr>`).join("")}
-      </table>`;
-  }
-  stage.innerHTML = html || "<div class='note'>Select at least one category.</div>";
-}
-
 function render(){
   if(mode==="quiz") renderQuiz();
   else if(mode==="study") renderStudy();
-  else if(mode==="type") renderType();
-  else renderList();
+  else renderType();
 }
+
+// ---------------- REFERENCE DRAWER ----------------
+let refSel = new Set(CATS.map(c=>c.id));
+let refQ = "";
+
+function hl(text, q){
+  const t = esc(text);
+  if(!q) return t;
+  const i = t.toLowerCase().indexOf(q.toLowerCase());
+  if(i<0) return t;
+  return t.slice(0,i)+'<span class="refhit">'+t.slice(i,i+q.length)+'</span>'+t.slice(i+q.length);
+}
+
+function refChipsRender(){
+  $("refchips").innerHTML = CATS.map(c=>
+    `<button class="chip ${refSel.has(c.id)?"on":""}" data-rc="${c.id}">${c.label}</button>`).join("")
+    + `<button class="chip" data-rc="__all">ALL</button>`;
+  document.querySelectorAll("[data-rc]").forEach(ch=>{
+    ch.onclick = ()=>{ const c=ch.dataset.rc;
+      if(c==="__all"){ refSel = new Set(CATS.map(x=>x.id)); }
+      else { refSel.has(c)?refSel.delete(c):refSel.add(c); if(refSel.size===0) refSel.add(c); }
+      refChipsRender(); renderRef(); };
+  });
+}
+
+function renderRef(){
+  const q = refQ.trim();
+  let html = "", total = 0;
+  for(const c of CATS){
+    if(!refSel.has(c.id)) continue;
+    let rows = ITEMS.filter(it=>it.cat===c.id);
+    if(q){ const lq=q.toLowerCase();
+      rows = rows.filter(it=> it.n.toLowerCase().includes(lq)
+        || it.f.toLowerCase().includes(lq)
+        || (it.port||"").toLowerCase().includes(lq)); }
+    if(rows.length===0) continue;
+    total += rows.length;
+    const isP = c.id==="PROTO";
+    html += `<div class="grouphead">${c.label} · ${rows.length}</div>
+      <table><tr><th>${isP?"PROTOCOL":"COMMAND"}</th><th>WHAT IT DOES</th>${isP?"<th>PORT</th>":""}</tr>
+      ${rows.map(it=>`<tr><td class="cmd">${hl(it.n,q)}</td><td>${hl(it.f,q)}</td>${isP?`<td class="p">${hl(it.port||"—",q)}</td>`:""}</tr>`).join("")}
+      </table>`;
+  }
+  $("refbody").innerHTML = total? html
+    : `<div class="note" style="margin-top:24px">No matches for "${esc(q)}".</div>`;
+}
+
+function openRef(){
+  $("refwrap").classList.add("on");
+  document.body.classList.add("locked");
+  renderRef();
+}
+function closeRef(){
+  $("refwrap").classList.remove("on");
+  document.body.classList.remove("locked");
+}
+
+$("fab").onclick = openRef;
+$("refclose").onclick = closeRef;
+$("refsearch").oninput = e=>{ refQ = e.target.value; renderRef(); };
+document.addEventListener("keydown", e=>{
+  if(e.key==="Escape" && $("refwrap").classList.contains("on")) closeRef();
+});
+refChipsRender();
 
 // ---------------- TABS ----------------
 function setMode(m){
   mode = m;
-  ["quiz","study","type","list"].forEach(x=> $("tab-"+x).classList.toggle("on", x===m));
+  ["quiz","study","type"].forEach(x=> $("tab-"+x).classList.toggle("on", x===m));
   chipsRender();
   if(m==="quiz") rebuildQuiz(); else rebuildDeck();
 }
 $("tab-quiz").onclick = ()=>setMode("quiz");
 $("tab-study").onclick = ()=>setMode("study");
 $("tab-type").onclick = ()=>setMode("type");
-$("tab-list").onclick = ()=>setMode("list");
 
 chipsRender();
 rebuildQuiz();
