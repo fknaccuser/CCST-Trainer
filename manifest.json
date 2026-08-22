@@ -1,0 +1,19 @@
+{
+  "name": "CCST Command & Protocol Trainer",
+  "short_name": "CCST Drill",
+  "description": "CCST Networking 100-150 drill: 93 scenario questions across all six exam domains plus 126 command and protocol flashcards.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#070C12",
+  "theme_color": "#0A1119",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
